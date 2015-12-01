@@ -1,0 +1,174 @@
+.\" hey, Emacs:   -*- nroff -*-
+.\" slsnif is free software; you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation; either version 2 of the License, or
+.\" (at your option) any later version.
+.\" 
+.\" This program is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\" 
+.\" You should have received a copy of the GNU General Public License
+.\" along with this program; see the file COPYING.  If not, write to
+.\" the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+.\" 
+.\" Please update the above date whenever this man page is modified.
+.\" 
+.\" Some roff macros, for reference:
+.\" .nh        disable hyphenation
+.\" .hy        enable hyphenation
+.\" .ad l      left justify
+.\" .ad b      justify to both left and right margins (default)
+.\" .nf        disable filling
+.\" .fi        enable filling
+.\" .br        insert line break
+.\" .sp <n>    insert n+1 empty lines
+.\" for manpage-specific macros, see man(7)
+.TH "SLSNIF" "1" "0.4.4" "Yan Gurtovoy" "Debug"
+.SH "NAME"
+slsnif \- Serial line sniffer
+.SH "SYNOPSIS"
+.B slsnif
+[\-b]  [\-l logfile]  [\-i file]  [\-o file]  [\-s speed]  [\-t]  [\-x]  [\-p port2]
+[\-\-color color] [\-\-timecolor color] [\-\-bytescolor color] [\-n] [\-u] port1
+ 
+.SH "DESCRIPTION"
+\fBslsnif\fR is a serial line sniffer software. It listens to the specified serial port and writes all data coming through it into either stdout (default) or a log file (if specified \-\- see option \fI\-l\fR).
+.PP 
+\fBslsnif\fR operates either by creating a pseudo tty (pty) and linking it to the serial port, or by linking two serial ports together. In order to set up a debug session one has either to start \fBslsnif\fR on a given port first, note the \fIpty\fR it had opened (also available from file /tmp/slsnif_pty while \fBslsnif\fR is running), then configure the controlling software for the device being debugged to use this pty instead of the actual port, or, in case of two ports being used, simply start \fBslsnif\fR on two ports (see option \fI\-p\fR) and watch the show :) 
+.PP 
+\fBNote 1 :\fR \fBSlsnif\fR will try to match port settings on pty and port (or on 1st and 2nd ports) as soon as it detects first chunk of data coming from the "host side" (which is either pty or 2nd port). If it fails (in case of a braindead   controlling   software that doesn't set  the  baudrate  correctly), one has an ability to set baudrate by hand via option \fI\-s\fR. Controlling software and \fBslsnif\fR should be set up to use the same baudrate, which in turn should match the baudrate used by the device connected to the port.
+.PP 
+\fBNote 2 :\fR If controlling software is running under vmware (www.vmware.com) and pty is used, port in question should be disconnected from vmware \fIbefore\fR invoking \fBslsnif\fR, and connected to the opened pty \fIafter\fR slsnif has been started.
+.SH "PARAMETERS"
+\fBslsnif\fP accepts the following parameters:
+.TP 
+.B <port1> (required)
+First (and only one in case of pty being used) serial port to listen to. (/dev/ttyS0, /dev/ttyS1, etc.)
+.\"
+.SH "OPTIONS"
+.TP 
+.B [\-l <logfile>] ([\-\-log <logfile>])
+File to direct output to. Output is sent to \fIstdout\fR by default.
+.TP 
+.B [\-i <in-file>] ([\-\-in-tee <in-file>])
+File to dump raw data from device to. Multiple '\-i' / '\-\-in-tee' arguments result in multiple copies of data in corresponding files.
+.TP 
+.B [\-o <out-file>] ([\-\-out-tee <out-file>])
+File to dump raw data from host to. Multiple '\-o' / '\-\-out-tee' arguments result in multiple copies of data in corresponding files.
+.TP 
+.B [\-s <speed>] ([\-\-speed <speed>])
+Baudrate to use. Valid options are:
+.br 
+50, 75, 110, 134, 150, 200, 300, 600, 1200, 1800, 2400, 4800, 9600,
+19200, 38400, 57600, 115200.
+.br 
+Defaults to 9600 baud.
+.TP 
+.B [\-b] ([\-\-bytes])
+Print number of bytes transmitted on every read.
+.TP 
+.B [\-p <port2>] ([\-\-port2 <port2>])
+Use real serial port instead of pty. Useful when one needs to log data going between two ports.
+.TP 
+.B [\-n] ([\-\-nolock])
+Disable locking of the port.
+Normally not a good idea, but can be very useful if one doesn't have
+permissions to write to lock directory
+(usually /var/lock/)
+.TP
+.B [\-t] ([\-\-timestamp])
+Print timestamp for every transmission.
+.TP
+.B [\-x] ([\-\-hex])
+Display hexadecimal ascii values.
+.TP
+.B [\-u] ([\-\-unix98])
+Use SYSV (Unix98) ptys instead of BSD ptys.
+.TP 
+.B [\-\-color <color>]
+Color to use for normal output.
+.TP 
+.B [\-\-timecolor <color>]
+Color to use for timestamp.
+.TP 
+.B [\-\-bytescolor <color>]
+Color to use for number of bytes transmitted.
+.br 
+Valid <color> values are:
+.br 
+black, red, green, yellow, blue, magenta,
+.br 
+cyan, white, brightblack, brightred,
+.br 
+brightgreen, brightyellow, brightblue,
+.br 
+brightmagenta, brightcyan, and brightwhite.
+.TP 
+.B [\-h] ([\-\-help])
+Display help.
+.br 
+.br
+.br 
+.br
+.br
+.br 
+.\"
+.SH "RC FILE"
+.PP 
+The following options can be specified via rc\-file '.slsnifrc', which should be located in the user's home directory:
+.TP 
+.B TOTALBYTES ON/OFF
+\-\- corresponds to \-b (\-\-bytes).
+.TP
+.B TIMESTAMP  ON/OFF
+\-\- corresponds to \-t (\-\-timestamp).
+.TP
+.B DISPLAYHEX ON/OFF
+\-\- corresponds to \-x (\-\-hex).
+.TP 
+.B NOLOCK     ON/OFF
+\-\- corresponds to \-n (\-\-nolock).
+.TP
+.B SYSVPTY    ON/OFF
+\-\- corresponds to \-u (\-\-unix98).
+.TP 
+.B COLOR      <color>
+\-\- corresponds to \-\-color <color>.
+.TP 
+.B TIMECOLOR  <color> 
+\-\- corresponds to \-\-timecolor <color>.
+.TP
+.B BYTESCOLOR <color>
+\-\- corresponds to \-\-bytescolor <color>.
+.PP 
+Options specified via command line \fIalways override\fR the ones specified via rc\-file.
+.PP 
+.\"
+.SH "EXAMPLE"
+.PP 
+\fBslsnif \-n \-l log.txt \-s 2400 /dev/ttyS1\fR
+.br 
+\fI
+        Started logging data into file 'log.txt'.
+        Opened pty: /dev/ttyp0
+        Saved name of the pty opened into file '/tmp/slsnif_pty'.
+        Opened port: /dev/ttyS1
+        Baudrate is set to 2400 baud.
+\fR
+.br
+Note: pty \fBslsnif\fR has opened is \fI/dev/ttyp0\fR.
+.PP
+.\"
+.SH "SIGNALS"
+.PP
+SIGHUP signal causes \fBslsnif\fR to move file pointer in all log files back to the beginning. This is useful for example when logfiles are rotated by \fBlogrotate\fR.
+SIGUSR1 signal causes \fBslsnif\fR to re-synchronize settings between ttys at any time. Useful for debugging software that changes port settings in the middle of transmission.
+.\"
+.SH "SEE ALSO"
+.BR setserial (8),
+.BR stty (1).
+.\"
+.SH "AUTHOR"
+Yan Gurtovoy <ymg@dakotacom.net>.

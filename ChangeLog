@@ -1,0 +1,97 @@
+03/13/2001
+	* 0.2.7:
+	    -	first public release.
+
+04/09/2001
+        * 0.2.8:
+	    -	rewrote command line parameters handling.
+	    -	added a couple of output messages.
+
+04/24/2001
+	* 0.3.0:
+	    -	added option to timestamp output
+	    -	added option to print number of bytes transmitted
+
+04/25/2001
+	* 0.3.1:
+	    -  fixed the infinite loop when looking for available pty bug
+		(those typos will kill me one day :)
+
+06/09/2001
+	* 0.3.2:
+	    -  added optional colors for terminal output.
+	    -  fixed a bug with logfile name including '=' when
+	       specified as `--log=<filename>`
+	       
+09/25/2001
+	* 0.3.3:
+	    -  fixed a bug with shell piping and output redirection
+	       (`slsnif <parameters> | more` and Co. should work fine now).
+
+10/21/2001
+	* 0.3.4:
+	    -  now compiles on a Sun SPARC Solaris 7 machine, thanks
+	       to Heiko Nardmann (h.nardmann@secunet.de)
+
+12/12/2001
+	* 0.4.0:
+	    -  added ability to lock the port ('-n' and '--nolock'
+	       parameters).
+	    -  added ability to use a real serial port instead of a
+	       pty, thus enabling data logging between two ports.
+	       ('-p' and '--port2' parameters).
+	    -  now port parameters (termios structures) of both ports
+	       are synchronized as soon as first chunk of data appears
+	       on a host (pty) side, so setting baudrate is necessary
+	       only if controlling software doesn't set it.
+	    -  rewrote timestamping code to give more precise output
+	       if ftime() function is present. New code is a bit slower
+	       than the old one, if that causes problems (unlikely) one
+	       can always force slsnif to use old code by changing line
+	           #define HAVE_SYS_TIMEB_H  1
+	       to
+	           #undef HAVE_SYS_TIMEB_H
+	       in config.h file before compilation.
+	    -  added ability to read certain parameters from rc-file,
+	       see README and man page for details on syntax.
+	       An example of such file (slsnifrc-example) is included
+	       in the distribution.
+	    -  fixed some minor bugs. 
+
+04/21/2002
+	* 0.4.1:
+	    -  Thanks to Jan Kratochvil (short@ucw.cz), slsnif is now able
+	       to dump raw data into file(s) ('-i' and '--in-tee' parameters
+	       for data from device, '-o' and '--out-tee' parameters for data
+	       from host). Multiple '-i' and '-o' arguments are allowed if
+	       more than one copy of raw data is necessary.
+	       
+03/31/2003
+	* 0.4.2:
+	    -  Added ability to move logfile pointer back to the beginning of the
+	       file upon cathing the HUP signal for using with logrotate.
+	    -  Added some extra error checking
+
+06/16/2004
+	* 0.4.3:
+	    -  Increased possible length of the port name to 128 chars
+	       (by requests of those people with non-standard device names)
+            -  Added ability to display ascii values in hex ('-i' and '--hex'
+               parameters). This can also be turned on/off from the rc-file.
+            -  Fixed a bug that caused slsnif to lose first couple of chars
+               when writing data to log file(s).
+            -  slsnif now writes the name of opened pty to a file /tmp/slsnif_pty
+               as well as to STDOUT. If it's unable to open this file, an error
+               message is logged, but execution continues normally.
+
+02/05/2005
+        * 0.4.4:
+            -  Added ability to resynchronize ports at any time by sending a
+               SIGUSR1 signal to slsnif. Useful for debugging applications
+               that change port parameters mid-way, after starting the
+               transmission. One example is pppd daemon, which sets initial
+               parameters in the chat script, and changes them later, after
+               chat script terminates.
+            -  Added ability to use SYSV (Unix98) ptys instead of BSD ones
+               (see '-u' and '--unix98' parameters). This option can also be
+               turned on/off from rc-file.

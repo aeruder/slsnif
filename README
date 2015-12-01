@@ -1,0 +1,110 @@
+	slsnif - Serial line sniffer
+
+
+
+  Copyright (C) 2001 Yan Gurtovoy
+
+  slsnif operates by opening a pty and linking it to the serial port.
+  It takes following parameters / options:
+
+  1. Serial port to open (required).
+  2. Name of the file to direct output to (optional, defaults to stdout).
+  3. Desired baudrate (optional, defaults to 9600 baud).
+  4. Timestamp On/Off (optional, defaults to Off).
+  5. Print ascii values in hex On/Off (optional, defaults to Off)
+  6. Print number of bytes transmitted On/Off (optional, defaults to Off).
+  7. Optional colors for timestamp, number of bytes transmitted,
+     and normal output.
+  8. Lock port On/Off (optional, defaults to On).
+  9. Use Unix98 ptys instead of BSD ptys (optional, defaults to BSD style).
+  10. Second serial port to open. If specified, this port will be used
+     instead of a pty, thus providing an ability to log data between
+     two serial ports.
+  11. Filenames for dumping raw data into, separate files are used for
+      input (from device) and output (from host) data.
+
+  See man page for details on syntax, here are a couple of examples...
+  
+  Examples:
+    slsnif /dev/ttyS1
+        -- opens port /dev/ttyS1, sets speed to 9600 baud, output is sent
+           to stdout
+    slsnif /dev/ttyS0 -l log.txt
+        -- opens port /dev/ttyS0, sets speed to 9600 baud, output is sent
+           to file log.txt
+    slsnif /dev/ttyS2 --log log1.txt -s 2400
+        -- opens port /dev/ttyS2, sets speed to 2400 baud, output is sent
+           to file log1.txt
+    slsnif /dev/ttyS1 --speed 4800
+        -- opens port /dev/ttyS1, sets speed to 4800 baud, output is sent
+           to stdout.
+    slsnif -p /dev/ttyS0 /dev/ttyS1
+        -- opens ports /dev/ttyS0 and /dev/ttyS1. No pty is opened
+	   in this case. Data coming from /dev/ttyS1 is considered
+	   to be coming from a device and data coming from /dev/ttyS0
+	   is considered to be coming from host. This consideration
+	   is purely cosmetic, it only affects the way output works,
+	   i.e. which chunks of data will be placed on lines that
+	   begin with 'Device' and which chunks will go on lines
+	   that begin with 'Host'. If pty is used, data from pty is
+	   considered to be 'from host' and data from port is 'from
+	   device'.
+    slsnif -h
+        -- displays help.           
+
+  RC file:
+    slsnif can read some of options from a configuration file
+    '.slsnifrc', located in user's home directory. The following
+    options can be specified in this file:
+    
+      RC-file option        corresponding command line option
+      ------------------    ---------------------------------
+      TOTALBYTES ON/OFF     -b (--bytes)
+      TIMESTAMP  ON/OFF     -t (--timestamp)
+      DISPLAYHEX ON/OFF     -x (--hex)
+      NOLOCK     ON/OFF     -n (--nolock)
+      SYSVPTY    ON/OFF     -u (--unix98)
+      COLOR      <color>    --color <color>
+      TIMECOLOR  <color>    --timecolor <color>
+      BYTESCOLOR <color>    --bytescolor <color>
+
+    Valid values for <color> are:
+      black, red, green, yellow, blue, magenta, cyan, white,
+      brightblack, brightred, brightgreen, brightyellow,
+      brightblue, brightmagenta, brightcyan, and brightwhite.
+            
+    Options provided on the command line always override the
+    ones read from the rc-file.
+    
+    An example of rc-file with comments (slsnifrc-example) is
+    included in the distribution.
+   
+  How to use it:
+    - start slsnif on a given port, note pty it has opened. The pty name is
+      also available from file /tmp/slsnif_pty (useful for scripting).
+    - configure controlling software for the device being debugged to use this
+      pty instead of the real port, start controlling software.
+    - while slsnif is running you can send it a SIGHUP signal, which would cause the
+      rotation of all log files (i.e. file pointers will be moved to the beginning of
+      the file).
+    - while slsnif is running you can also send it a SIGUSR1 signal, which would cause
+      immediate resynchronization of the port settings.
+    - when you're done, stop slsnif by hitting <Ctrl + C>.
+      
+  slsnif is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
+Comments are welcome.
+
+	- Yan Gurtovoy <ymg@dakotacom.net>
