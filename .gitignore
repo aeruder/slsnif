@@ -1,0 +1,17 @@
+/autom4te.cache
+Makefile.in
+/aclocal.m4
+/compile
+/config.h.in
+/config.h
+/config.log
+/config.status
+/configure
+/depcomp
+/install-sh
+/missing
+Makefile
+.deps
+*.o
+/src/slsnif
+/stamp-h1
