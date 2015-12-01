@@ -1,7 +1,8 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_REVISION($Revision: 1.0 $)dnl
-AC_INIT(src/ascii.h)
-AM_INIT_AUTOMAKE(slsnif, 0.4.4)
+AC_INIT([slsnif], [0.4.4])
+AC_CONFIG_SRCDIR([src/ascii.h])
+AM_INIT_AUTOMAKE
 AC_LANG_C
 dnl Checks for programs.
 AC_ISC_POSIX
