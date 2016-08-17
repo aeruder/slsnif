@@ -35,6 +35,7 @@ typedef struct _tty_struct {
     int             portraw;
     int             ptypipefd[2];
     int             portpipefd[2];
+    int             wait;
     int             dspbytes;
     int             tstamp;
     int             dsphex;

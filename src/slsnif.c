@@ -44,6 +44,7 @@ void usage() {
     printf("  -i (--in-tee)  <file>   - write raw data from device to this file(s).\n");
     printf("  -o (--out-tee) <file>   - write raw data from host to this file(s).\n");
     printf("  -s (--speed) <speed>    - baudrate to use, defaults to 9600 baud.\n");
+    printf("  -w (--wait) <time>      - time in ms to wait for more data to arrive.\n");
     printf("  -p (--port2) <port2>    - serial port to use instead of pty.\n");
     printf("  -x (--hex)              - display hexadecimal ascii values.\n");
     printf("  -u (--unix98)           - use SYSV (unix98) ptys instead of BSD ones\n");
@@ -249,10 +250,12 @@ void outputData(unsigned char *buffer, int n, int out, int mode) {
 void pipeReader() {
 /* get data drom pipes */
 
-    int             maxfd, mode;
+    int             maxfd, mode, have_port, have_pty;
     fd_set          read_set;
     unsigned char   buffer[BUFFSIZE];
     int             read;
+    struct timeval  timeout;
+    struct timeval  *timeoutptr;
 
     maxfd = max(tty_data.ptypipefd[0], tty_data.portpipefd[0]);
     read = 0;
@@ -261,7 +264,15 @@ void pipeReader() {
         FD_ZERO(&read_set);
         FD_SET(tty_data.ptypipefd[0], &read_set);
         FD_SET(tty_data.portpipefd[0], &read_set);
-        if (select(maxfd + 1, &read_set, NULL, NULL, NULL) < 0) {
+        // When data is pending and wait is specified, set a timeout
+        if (tty_data.wait && mode) {
+            timeout.tv_sec = tty_data.wait / 1000;
+            timeout.tv_usec = tty_data.wait % 1000 * 1000;
+            timeoutptr = &timeout;
+        } else {
+            timeoutptr = NULL;
+        }
+        if (select(maxfd + 1, &read_set, NULL, NULL, timeoutptr) < 0) {
 	    /* don't bail out if error was caused by interrupt */
 	    if (errno != EINTR) {
                 perror(SELFAIL);
@@ -270,12 +281,22 @@ void pipeReader() {
 	        continue;
             }
         }
-        if (FD_ISSET(tty_data.ptypipefd[0], &read_set)) {
+        have_port = FD_ISSET(tty_data.portpipefd[0], &read_set);
+        have_pty = FD_ISSET(tty_data.ptypipefd[0], &read_set);
+
+        // Mode indicates what data is waiting in the buffer now
+        if ((!mode || mode == 2) && have_pty) {
             mode = 2;
-            read = readPipeData(tty_data.ptypipefd[0], buffer, BUFFSIZE);
-        } else if (FD_ISSET(tty_data.portpipefd[0], &read_set)) {
+            read += readPipeData(tty_data.ptypipefd[0], buffer + read, BUFFSIZE - read);
+            // Read some data, wait for more before outputting
+            if (tty_data.wait && read < BUFFSIZE && !have_port)
+                continue;
+        } else if ((!mode || mode == 1) && have_port) {
             mode = 1;
-            read = readPipeData(tty_data.portpipefd[0], buffer, BUFFSIZE);
+            read += readPipeData(tty_data.portpipefd[0], buffer + read, BUFFSIZE - read);
+            // Read some data, wait for more before outputting
+            if (tty_data.wait && read < BUFFSIZE && !have_pty)
+                continue;
         }
 
         if (read) {
@@ -402,6 +423,7 @@ int main(int argc, char *argv[]) {
         {"nolock",     0, NULL, 'n'},
         {"port2",      1, NULL, 'p'},
         {"speed",      1, NULL, 's'},
+        {"wait",       1, NULL, 'w'},
         {"bytes",      0, NULL, 'b'},
         {"timestamp",  0, NULL, 't'},
         {"hex",        0, NULL, 'x'},
@@ -466,6 +488,9 @@ int main(int argc, char *argv[]) {
                     tty_data.baudrate = baudrates[i].speed;
                     strcat(baudstr, baudrates[i].spdstr);
                 }
+                break;
+            case 'w':
+                tty_data.wait = atoi(optarg);
                 break;
             case 'p':
                 tty_data.ptyName = (optarg[0] == '=' ? optarg + 1 : optarg);

@@ -38,7 +38,7 @@
 #endif
 #include "common.h"
 
-#define OPTSTR      "bnhtuxp:l:s:i:o:" /* list of short options for getopt_long() */
+#define OPTSTR      "bnhtuxp:l:s:w:i:o:" /* list of short options for getopt_long() */
 #define PORT_OUT    "\nHost   --> "
 #define PORT_IN     "\nDevice --> "
 #define DEFPTRNAME  "/dev/pty??"
