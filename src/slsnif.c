@@ -164,15 +164,26 @@ void forwardData(int in, int out, int aux, int mode) {
     }
 }
 
-void outputData(int in, int out, int mode) {
-    /* reads data from `in`, formats it, writes it to `out`
+int readPipeData(int in, unsigned char *buffer, int size) {
+    int             n;
+
+    /* reads data from `in` into `buffer`. Returns the amount of data
+     * read. */
+    if ((n = read(in, buffer, size)) < 0) {
+        perror(RPIPEFAIL);
+        n = 0;
+    }
+    return n;
+}
+
+void outputData(unsigned char *buffer, int n, int out, int mode) {
+    /* reads `n` bytes from `buffer`, formats them, writes them to `out`
+     * (and the appropriate tee_files).
      * mode 1 - read from port
      * mode 2 - read from pty
      */
 
-    unsigned char   buffer[BUFFSIZE];
     char            outbuf[BUFFSIZE * 16 + 1];
-    int             n;
 #ifdef HAVE_SYS_TIMEB_H
     struct timeb    tstamp;
     char            tbuf[29];
@@ -183,71 +194,69 @@ void outputData(int in, int out, int mode) {
     time_t          tstamp;
 #endif
 #endif
-    if ((n = read(in, buffer, BUFFSIZE)) < 0) {
-        perror(RPIPEFAIL);
-    } else {
-        if (n > 0) {
-            /* print timestamp if necessary */
-            if (tty_data.tstamp) {
-                if (out == STDOUT_FILENO) setColor(out, tty_data.tclr);
-                write(out, "\n\n", 2);
+    /* print timestamp if necessary */
+    if (tty_data.tstamp) {
+        if (out == STDOUT_FILENO) setColor(out, tty_data.tclr);
+        write(out, "\n\n", 2);
 #ifdef HAVE_SYS_TIMEB_H
-                ftime(&tstamp);
-                tmp[0] = tmp1[0] = tbuf[0] = 0;
-                strncat(tmp, ctime(&(tstamp.time)), 24);
-                strncat(tbuf, tmp, 19);
-                sprintf(tmp1, ".%2ui", tstamp.millitm);
-                strncat(tbuf, tmp1, 3);
-                strcat(tbuf, tmp + 19);
-                write(out, tbuf, 28);
+        ftime(&tstamp);
+        tmp[0] = tmp1[0] = tbuf[0] = 0;
+        strncat(tmp, ctime(&(tstamp.time)), 24);
+        strncat(tbuf, tmp, 19);
+        sprintf(tmp1, ".%2ui", tstamp.millitm);
+        strncat(tbuf, tmp1, 3);
+        strcat(tbuf, tmp + 19);
+        write(out, tbuf, 28);
 #else
 #ifdef HAVE_TIME_H
-                time(&tstamp);
-                write(out, ctime(&tstamp), 24);
+        time(&tstamp);
+        write(out, ctime(&tstamp), 24);
 #endif
 #endif
-            } else {
-                write(out, "\n", 1);
-            }
-            if (out == STDOUT_FILENO) setColor(out, tty_data.clr);
-            /* print prefix */
-            write(out, (mode == 1) ? PORT_IN : PORT_OUT, PRFXSIZE);
-            /* format data */
-            if (tty_data.dsphex) {
-                fmtDataHex(buffer, outbuf, n);
-            } else {
-                fmtData(buffer, outbuf, n);
-            }
-            if (mode == 1 && reseek) {
-                /* rotate log file */
-                lseek(tty_data.logfd, 0, SEEK_SET);
-                for (entry= tee_files[0]; entry; entry = entry->next) lseek(entry->fd, 0, SEEK_SET);
-                /* clear the flag */
-                reseek = FALSE;
-            }
-            /* print data */
-            write(out, outbuf, strlen(outbuf));
-            for (entry = (mode == 1 ? tee_files[0] : tee_files[1]); entry; entry = entry->next) {
-                if (n != write(entry->fd, buffer, n)) fatalError(TEEWRTFAIL);
-            }
-            /* print total number of bytes if necessary */
-            if (tty_data.dspbytes) {
-                buffer[0] = 0;
-                sprintf(buffer, "\n%s %i", TOTALBYTES, n);
-                if (out == STDOUT_FILENO) setColor(out, tty_data.bclr);
-                write (out, buffer, strlen(buffer));
-            }
-        }
+    } else {
+        write(out, "\n", 1);
+    }
+    if (out == STDOUT_FILENO) setColor(out, tty_data.clr);
+    /* print prefix */
+    write(out, (mode == 1) ? PORT_IN : PORT_OUT, PRFXSIZE);
+    /* format data */
+    if (tty_data.dsphex) {
+        fmtDataHex(buffer, outbuf, n);
+    } else {
+        fmtData(buffer, outbuf, n);
+    }
+    if (mode == 1 && reseek) {
+        /* rotate log file */
+        lseek(tty_data.logfd, 0, SEEK_SET);
+        for (entry= tee_files[0]; entry; entry = entry->next) lseek(entry->fd, 0, SEEK_SET);
+        /* clear the flag */
+        reseek = FALSE;
+    }
+    /* print data */
+    write(out, outbuf, strlen(outbuf));
+    for (entry = (mode == 1 ? tee_files[0] : tee_files[1]); entry; entry = entry->next) {
+        if (n != write(entry->fd, buffer, n)) fatalError(TEEWRTFAIL);
+    }
+    /* print total number of bytes if necessary */
+    if (tty_data.dspbytes) {
+        buffer[0] = 0;
+        sprintf(buffer, "\n%s %i", TOTALBYTES, n);
+        if (out == STDOUT_FILENO) setColor(out, tty_data.bclr);
+        write (out, buffer, strlen(buffer));
     }
 }
 
 void pipeReader() {
 /* get data drom pipes */
 
-    int             maxfd;
+    int             maxfd, mode;
     fd_set          read_set;
+    unsigned char   buffer[BUFFSIZE];
+    int             read;
 
     maxfd = max(tty_data.ptypipefd[0], tty_data.portpipefd[0]);
+    read = 0;
+    mode = 0;
     while (TRUE) {
         FD_ZERO(&read_set);
         FD_SET(tty_data.ptypipefd[0], &read_set);
@@ -261,11 +270,19 @@ void pipeReader() {
 	        continue;
             }
         }
-        if (FD_ISSET(tty_data.ptypipefd[0], &read_set))
-            outputData(tty_data.ptypipefd[0], tty_data.logfd, 2);
-        else
-            if (FD_ISSET(tty_data.portpipefd[0], &read_set))
-                outputData(tty_data.portpipefd[0], tty_data.logfd, 1);
+        if (FD_ISSET(tty_data.ptypipefd[0], &read_set)) {
+            mode = 2;
+            read = readPipeData(tty_data.ptypipefd[0], buffer, BUFFSIZE);
+        } else if (FD_ISSET(tty_data.portpipefd[0], &read_set)) {
+            mode = 1;
+            read = readPipeData(tty_data.portpipefd[0], buffer, BUFFSIZE);
+        }
+
+        if (read) {
+            outputData(buffer, read, tty_data.logfd, mode);
+            mode = 0;
+            read = 0;
+        }
     }
 }
 
