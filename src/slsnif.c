@@ -217,15 +217,15 @@ void writeData(int in, int out, int aux, int mode) {
                 }
                 /* print data */
                 write(out, outbuf, strlen(outbuf));
+                for (entry = (aux ? tee_files[0] : tee_files[1]); entry; entry = entry->next) {
+                    if (n != write(entry->fd, buffer, n)) fatalError(TEEWRTFAIL);
+                }
                 /* print total number of bytes if necessary */
                 if (tty_data.dspbytes) {
                     buffer[0] = 0;
                     sprintf(buffer, "\n%s %i", TOTALBYTES, n);
                     if (out == STDOUT_FILENO) setColor(out, tty_data.bclr);
                     write (out, buffer, strlen(buffer));
-                }
-                for (entry = (aux ? tee_files[0] : tee_files[1]); entry; entry = entry->next) {
-                    if (n != write(entry->fd, buffer, n)) fatalError(TEEWRTFAIL);
                 }
             }
         }
