@@ -38,9 +38,10 @@
 #endif
 #include "common.h"
 
-#define OPTSTR      "bnhtuxp:l:s:w:i:o:" /* list of short options for getopt_long() */
+#define OPTSTR      "bnhtuxdp:l:s:w:i:o:" /* list of short options for getopt_long() */
 #define PORT_OUT    "\nHost   --> "
 #define PORT_IN     "\nDevice --> "
+#define PRFX_EMPTY  "\n       --> "
 #define DEFPTRNAME  "/dev/pty??"
 #define TMPPATH     "/tmp/slsnif_pty"
 #define TOTALBYTES  "Total bytes transmitted:"

@@ -47,6 +47,7 @@ void usage() {
     printf("  -w (--wait) <time>      - time in ms to wait for more data to arrive.\n");
     printf("  -p (--port2) <port2>    - serial port to use instead of pty.\n");
     printf("  -x (--hex)              - display hexadecimal ascii values.\n");
+    printf("  -d (--hexdump)          - display in \"hexdump\" format (hex plus ascii)\n");
     printf("  -u (--unix98)           - use SYSV (unix98) ptys instead of BSD ones\n");
     printf("  --color      <color>    - color to use for normal output.\n");
     printf("  --timecolor  <color>    - color to use for timestamp.\n");
@@ -131,6 +132,55 @@ void fmtDataHex(unsigned char *in, char *out, int in_size) {
         }
         /* put formatted data into output buffer */
         strcat(out, charbuf);
+    }
+}
+
+static const int LINE_WIDTH = 16;
+static const int BLOCK_SIZE = 4;
+
+char *fmtDataHexdumpLine(unsigned char *in, char *out, int in_size) {
+    int     i;
+
+    for (i = 0; i < in_size; i++) {
+        out += sprintf(out, "%02x ", in[i]);
+        if (i % BLOCK_SIZE == BLOCK_SIZE - 1)
+            *out++ = ' ';
+    }
+
+    // Fll with spaces up to a complete line
+    for (; i < LINE_WIDTH; i++) {
+        out += sprintf(out, "   ");
+        if (i % BLOCK_SIZE == BLOCK_SIZE - 1)
+            *out++ = ' ';
+    }
+
+    // Add ASCII version
+    for (i = 0; i < in_size; i++) {
+        if (isprint(in[i]))
+            *out++ = in[i];
+        else
+            *out++ = '.';
+    }
+
+    *out = '\0';
+    return out;
+}
+
+void fmtDataHexdump(unsigned char *in, char *out, int in_size) {
+
+    int     len;
+    int     first = 1;
+
+    /* flush output buffer */
+    out[0] = 0;
+    while (in_size) {
+        if (!first)
+            out += sprintf(out, "%s", PRFX_EMPTY);
+        len = in_size < LINE_WIDTH ? in_size : LINE_WIDTH;
+        out = fmtDataHexdumpLine(in, out, len);
+        in_size -= len;
+        in += len;
+        first = 0;
     }
 }
 
@@ -223,6 +273,8 @@ void outputData(unsigned char *buffer, int n, int out, int mode) {
     /* format data */
     if (tty_data.dsphex) {
         fmtDataHex(buffer, outbuf, n);
+    } else if (tty_data.dsphexdump) {
+        fmtDataHexdump(buffer, outbuf, n);
     } else {
         fmtData(buffer, outbuf, n);
     }
@@ -427,6 +479,7 @@ int main(int argc, char *argv[]) {
         {"bytes",      0, NULL, 'b'},
         {"timestamp",  0, NULL, 't'},
         {"hex",        0, NULL, 'x'},
+        {"hexdump",    0, NULL, 'd'},
         {"unix98",     0, NULL, 'u'},
         {"color",      1, NULL, 'q'},
         {"timecolor",  1, NULL, 'y'},
@@ -504,6 +557,9 @@ int main(int argc, char *argv[]) {
                 break;
             case 'x':
                 tty_data.dsphex = TRUE;
+                break;
+            case 'd':
+                tty_data.dsphexdump = TRUE;
                 break;
             case 'u':
                 tty_data.sysvpty = TRUE;

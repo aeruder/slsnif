@@ -39,6 +39,7 @@ typedef struct _tty_struct {
     int             dspbytes;
     int             tstamp;
     int             dsphex;
+    int             dsphexdump;
     int             nolock;
     int             sysvpty;
     char            *portName;
