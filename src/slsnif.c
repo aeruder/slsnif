@@ -406,7 +406,7 @@ int main(int argc, char *argv[]) {
         {"timestamp",  0, NULL, 't'},
         {"hex",        0, NULL, 'x'},
         {"unix98",     0, NULL, 'u'},
-        {"color",      1, NULL, 'w'},
+        {"color",      1, NULL, 'q'},
         {"timecolor",  1, NULL, 'y'},
         {"bytescolor", 1, NULL, 'z'},
         {"in-tee",     1, NULL, 'i'},
@@ -470,7 +470,7 @@ int main(int argc, char *argv[]) {
             case 'p':
                 tty_data.ptyName = (optarg[0] == '=' ? optarg + 1 : optarg);
                 break;
-            case 'w':
+            case 'q':
                 ptr1 = getColor(optarg);
                 if (ptr1) {
                     tty_data.clr[0] = 0;
