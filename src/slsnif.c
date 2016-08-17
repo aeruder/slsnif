@@ -143,12 +143,32 @@ void setColor(int out, char *color) {
     }
 }
 
-void writeData(int in, int out, int aux, int mode) {
-/* reads data from `in`, formats it, writes it to `out` and `aux`.
- * mode 0 - read from pipe
+void forwardData(int in, int out, int aux, int mode) {
+/* reads data from `in` and writes it to `out` and `aux`.
  * mode 1 - read from port
  * mode 2 - read from pty
  */
+
+    unsigned char   buffer[BUFFSIZE];
+    int             n;
+    if ((n = read(in, buffer, BUFFSIZE)) < 0) {
+        if (errno == EIO)
+            sleep(1);
+        else
+            perror(mode == 1 ? RPORTFAIL : RPTYFAIL);
+    } else {
+        if (n > 0) {
+            write(out, buffer, n);
+            write(aux, buffer, n);
+        }
+    }
+}
+
+void outputData(int in, int out, int mode) {
+    /* reads data from `in`, formats it, writes it to `out`
+     * mode 1 - read from port
+     * mode 2 - read from pty
+     */
 
     unsigned char   buffer[BUFFSIZE];
     char            outbuf[BUFFSIZE * 16 + 1];
@@ -164,69 +184,58 @@ void writeData(int in, int out, int aux, int mode) {
 #endif
 #endif
     if ((n = read(in, buffer, BUFFSIZE)) < 0) {
-        if (mode)
-            if (errno == EIO)
-                sleep(1);
-            else
-                perror(mode == 1 ? RPORTFAIL : RPTYFAIL);
-        else
-            perror(RPIPEFAIL);
+        perror(RPIPEFAIL);
     } else {
         if (n > 0) {
-            if (mode) {
-                write(out, buffer, n);
-                write(aux, buffer, n);
-            } else {
-                /* print timestamp if necessary */
-                if (tty_data.tstamp) {
-                    if (out == STDOUT_FILENO) setColor(out, tty_data.tclr);
-                    write(out, "\n\n", 2);
+            /* print timestamp if necessary */
+            if (tty_data.tstamp) {
+                if (out == STDOUT_FILENO) setColor(out, tty_data.tclr);
+                write(out, "\n\n", 2);
 #ifdef HAVE_SYS_TIMEB_H
-                    ftime(&tstamp);
-                    tmp[0] = tmp1[0] = tbuf[0] = 0;
-                    strncat(tmp, ctime(&(tstamp.time)), 24);
-                    strncat(tbuf, tmp, 19);
-                    sprintf(tmp1, ".%2ui", tstamp.millitm);
-                    strncat(tbuf, tmp1, 3);
-                    strcat(tbuf, tmp + 19);
-                    write(out, tbuf, 28);
+                ftime(&tstamp);
+                tmp[0] = tmp1[0] = tbuf[0] = 0;
+                strncat(tmp, ctime(&(tstamp.time)), 24);
+                strncat(tbuf, tmp, 19);
+                sprintf(tmp1, ".%2ui", tstamp.millitm);
+                strncat(tbuf, tmp1, 3);
+                strcat(tbuf, tmp + 19);
+                write(out, tbuf, 28);
 #else
 #ifdef HAVE_TIME_H
-                    time(&tstamp);
-                    write(out, ctime(&tstamp), 24);
+                time(&tstamp);
+                write(out, ctime(&tstamp), 24);
 #endif
 #endif
-                } else {
-                    write(out, "\n", 1);
-                }
-                if (out == STDOUT_FILENO) setColor(out, tty_data.clr);
-                /* print prefix */
-                write(out, aux ? PORT_IN : PORT_OUT, PRFXSIZE);
-                /* format data */
-                if (tty_data.dsphex) {
-                    fmtDataHex(buffer, outbuf, n);
-                } else {
-                    fmtData(buffer, outbuf, n);
-                }
-                if (aux && reseek) {
-                    /* rotate log file */
-                    lseek(tty_data.logfd, 0, SEEK_SET);
-		    for (entry= tee_files[0]; entry; entry = entry->next) lseek(entry->fd, 0, SEEK_SET);
-                    /* clear the flag */
-                    reseek = FALSE;
-                }
-                /* print data */
-                write(out, outbuf, strlen(outbuf));
-                for (entry = (aux ? tee_files[0] : tee_files[1]); entry; entry = entry->next) {
-                    if (n != write(entry->fd, buffer, n)) fatalError(TEEWRTFAIL);
-                }
-                /* print total number of bytes if necessary */
-                if (tty_data.dspbytes) {
-                    buffer[0] = 0;
-                    sprintf(buffer, "\n%s %i", TOTALBYTES, n);
-                    if (out == STDOUT_FILENO) setColor(out, tty_data.bclr);
-                    write (out, buffer, strlen(buffer));
-                }
+            } else {
+                write(out, "\n", 1);
+            }
+            if (out == STDOUT_FILENO) setColor(out, tty_data.clr);
+            /* print prefix */
+            write(out, (mode == 1) ? PORT_IN : PORT_OUT, PRFXSIZE);
+            /* format data */
+            if (tty_data.dsphex) {
+                fmtDataHex(buffer, outbuf, n);
+            } else {
+                fmtData(buffer, outbuf, n);
+            }
+            if (mode == 1 && reseek) {
+                /* rotate log file */
+                lseek(tty_data.logfd, 0, SEEK_SET);
+                for (entry= tee_files[0]; entry; entry = entry->next) lseek(entry->fd, 0, SEEK_SET);
+                /* clear the flag */
+                reseek = FALSE;
+            }
+            /* print data */
+            write(out, outbuf, strlen(outbuf));
+            for (entry = (mode == 1 ? tee_files[0] : tee_files[1]); entry; entry = entry->next) {
+                if (n != write(entry->fd, buffer, n)) fatalError(TEEWRTFAIL);
+            }
+            /* print total number of bytes if necessary */
+            if (tty_data.dspbytes) {
+                buffer[0] = 0;
+                sprintf(buffer, "\n%s %i", TOTALBYTES, n);
+                if (out == STDOUT_FILENO) setColor(out, tty_data.bclr);
+                write (out, buffer, strlen(buffer));
             }
         }
     }
@@ -253,10 +262,10 @@ void pipeReader() {
             }
         }
         if (FD_ISSET(tty_data.ptypipefd[0], &read_set))
-            writeData(tty_data.ptypipefd[0], tty_data.logfd, 0, 0);
+            outputData(tty_data.ptypipefd[0], tty_data.logfd, 2);
         else
             if (FD_ISSET(tty_data.portpipefd[0], &read_set))
-                writeData(tty_data.portpipefd[0], tty_data.logfd, 1, 0);
+                outputData(tty_data.portpipefd[0], tty_data.logfd, 1);
     }
 }
 
@@ -675,7 +684,7 @@ int main(int argc, char *argv[]) {
         }
         if (FD_ISSET(tty_data.portfd, &rset)) {
             /* data coming from device */
-            writeData(tty_data.portfd, tty_data.ptyfd, tty_data.portpipefd[1], 1);
+            forwardData(tty_data.portfd, tty_data.ptyfd, tty_data.portpipefd[1], 1);
         } else {
             if (FD_ISSET(tty_data.ptyfd, &rset)) {
                 /* data coming from host */
@@ -690,7 +699,7 @@ int main(int argc, char *argv[]) {
                     needsync = FALSE;
                     printf("Done!\n");
                 }
-                writeData(tty_data.ptyfd, tty_data.portfd, tty_data.ptypipefd[1], 2);
+                forwardData(tty_data.ptyfd, tty_data.portfd, tty_data.ptypipefd[1], 2);
             }
         }
     }
