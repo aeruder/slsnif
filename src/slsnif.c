@@ -306,9 +306,9 @@ void outputData(unsigned char *buffer, int n, int out, int mode) {
     /* print total number of bytes if necessary */
     if (tty_data.dspbytes) {
         buffer[0] = 0;
-        sprintf(buffer, "\n%s %i", TOTALBYTES, n);
+        sprintf((char*)buffer, "\n%s %i", TOTALBYTES, n);
         setColor(out, tty_data.bclr);
-        write (out, buffer, strlen(buffer));
+        write (out, buffer, strlen((char*)buffer));
     }
 }
 
