@@ -789,8 +789,12 @@ int main(int argc, char *argv[]) {
                 if (needsync) {
                     setColor(STDOUT_FILENO, colors[WHITE].color);
                     printf("\nSynchronizing ports...");
-                    if (tcgetattr(tty_data.ptyfd, &tty_state) ||
-                            tcsetattr(tty_data.portfd, TCSANOW, &tty_state)) {
+                    if (tcgetattr(tty_data.ptyfd, &tty_state)) {
+                        perror(SYNCFAIL);
+                        return -1;
+                    }
+
+                    if (tcsetattr(tty_data.portfd, TCSANOW, &tty_state)) {
                         perror(SYNCFAIL);
                         return -1;
                     }
