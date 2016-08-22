@@ -63,6 +63,7 @@
 #define RPIPEFAIL   "Error reading from pipe"
 #define TEEFAIL     "Failed to create tee file"
 #define TEEWRTFAIL  "Failed to write to tee file"
+#define PARITYFAIL  "Invalid parity option"
 
 #define max(x,y)	((x) > (y) ? (x) : (y))
 
@@ -88,6 +89,12 @@ typedef struct _tee_entry {
      char   *name;
      int    fd;
 } tee_entry;
+
+enum {
+    PARITY_NONE = 0,
+    PARITY_ODD,
+    PARITY_EVEN,
+};
 
 /*
  * tee_files[0] - linked list of raw input files

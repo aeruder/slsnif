@@ -47,6 +47,7 @@ typedef struct _tty_struct {
     struct termios  ptystate_orig;
     struct termios  portstate_orig;
     speed_t         baudrate;
+    int             parity;
     char            clr[8];
     char            bclr[8];
     char            tclr[8];

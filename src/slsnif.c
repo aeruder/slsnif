@@ -44,6 +44,7 @@ void usage() {
     printf("  -i (--in-tee)  <file>   - write raw data from device to this file(s).\n");
     printf("  -o (--out-tee) <file>   - write raw data from host to this file(s).\n");
     printf("  -s (--speed) <speed>    - baudrate to use, defaults to 9600 baud.\n");
+    printf("  --parity <type>         - Set parity options, one of none, even or odd.\n");
     printf("  -w (--wait) <time>      - time in ms to wait for more data to arrive.\n");
     printf("  -p (--port2) <port2>    - serial port to use instead of pty.\n");
     printf("  -x (--hex)              - display hexadecimal ascii values.\n");
@@ -64,8 +65,20 @@ void fatalError(char *msg) {
     _exit(-1);
 }
 
-int setRaw(int fd, struct termios *ttystate_orig) {
-/* set tty into raw mode */
+void setSerial(struct termios *tty_state) {
+/* set configured serial options into tty_state */
+    tty_state->c_cflag &= ~(PARENB|PARODD);
+    tty_state->c_cflag |= CS8;
+    if (tty_data.parity)
+        tty_state->c_cflag |= PARENB;
+    if (tty_data.parity == PARITY_ODD)
+        tty_state->c_cflag |= PARODD;
+    cfsetispeed(tty_state, tty_data.baudrate);
+    cfsetospeed(tty_state, tty_data.baudrate);
+}
+
+int setRawAndSerial(int fd, struct termios *ttystate_orig) {
+/* set tty into raw mode and apply serial options */
 
     struct termios    tty_state;
 
@@ -76,11 +89,9 @@ int setRaw(int fd, struct termios *ttystate_orig) {
     tty_state.c_lflag &= ~(ICANON | IEXTEN | ISIG | ECHO);
     tty_state.c_iflag &= ~(ICRNL | INPCK | ISTRIP | IXON | BRKINT);
     tty_state.c_oflag &= ~OPOST;
-    tty_state.c_cflag |= CS8;	
     tty_state.c_cc[VMIN]  = 1;
     tty_state.c_cc[VTIME] = 0;
-    cfsetispeed(&tty_state, tty_data.baudrate);
-    cfsetospeed(&tty_state, tty_data.baudrate);
+    setSerial(&tty_state);
     if (tcsetattr(fd, TCSAFLUSH, &tty_state) < 0) return 0;
     return 1;
 }
@@ -475,6 +486,7 @@ int main(int argc, char *argv[]) {
         {"nolock",     0, NULL, 'n'},
         {"port2",      1, NULL, 'p'},
         {"speed",      1, NULL, 's'},
+        {"parity",     1, NULL, 'P'},
         {"wait",       1, NULL, 'w'},
         {"bytes",      0, NULL, 'b'},
         {"timestamp",  0, NULL, 't'},
@@ -540,6 +552,19 @@ int main(int argc, char *argv[]) {
                 if (baudrates[i].spdstr) {
                     tty_data.baudrate = baudrates[i].speed;
                     strcat(baudstr, baudrates[i].spdstr);
+                }
+                break;
+            case 'P':
+                if (strcasecmp(optarg, "none") == 0) {
+                    tty_data.parity = PARITY_NONE;
+                } else if (strcasecmp(optarg, "even") == 0) {
+                    tty_data.parity = PARITY_EVEN;
+                } else if (strcasecmp(optarg, "odd") == 0) {
+                    tty_data.parity = PARITY_ODD;
+                } else {
+                    errno = EINVAL;
+                    perror(PARITYFAIL);
+                    return -1;
                 }
                 break;
             case 'w':
@@ -741,7 +766,7 @@ int main(int argc, char *argv[]) {
         printf("Opened port: %s\n", tty_data.ptyName);
     }
     /* set raw mode on pty */
-    if(!setRaw(tty_data.ptyfd, &tty_data.ptystate_orig)) {
+    if(!setRawAndSerial(tty_data.ptyfd, &tty_data.ptystate_orig)) {
         perror(RAWFAIL);
         return -1;
     }
@@ -758,7 +783,7 @@ int main(int argc, char *argv[]) {
     }
     printf("Opened port: %s\n", tty_data.portName);
     /* set raw mode on port */
-    if (!setRaw(tty_data.portfd, &tty_data.portstate_orig)) {
+    if (!setRawAndSerial(tty_data.portfd, &tty_data.portstate_orig)) {
         perror(RAWFAIL);
         return -1;
     }
@@ -793,6 +818,13 @@ int main(int argc, char *argv[]) {
                         perror(SYNCFAIL);
                         return -1;
                     }
+
+                    // Keep the serial options at their configured
+                    // values. A pty does not support some options (such
+                    // as parity), so synchronizing those from the pty
+                    // to the serial port will always set them to their
+                    // default disabled value, so we set it again here.
+                    setSerial(&tty_state);
 
                     if (tcsetattr(tty_data.portfd, TCSANOW, &tty_state)) {
                         perror(SYNCFAIL);
