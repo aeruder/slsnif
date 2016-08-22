@@ -197,6 +197,8 @@ void fmtDataHexdump(unsigned char *in, char *out, int in_size) {
 
 void setColor(int out, char *color) {
 /* changes color on the terminal */
+    if (!isatty(out))
+        return;
 
     if (color[0]) {
         write(out, color, 7);
@@ -258,7 +260,7 @@ void outputData(unsigned char *buffer, int n, int out, int mode) {
 #endif
     /* print timestamp if necessary */
     if (tty_data.tstamp) {
-        if (out == STDOUT_FILENO) setColor(out, tty_data.tclr);
+        setColor(out, tty_data.tclr);
         write(out, "\n\n", 2);
 #ifdef HAVE_SYS_TIMEB_H
         ftime(&tstamp);
@@ -278,7 +280,7 @@ void outputData(unsigned char *buffer, int n, int out, int mode) {
     } else {
         write(out, "\n", 1);
     }
-    if (out == STDOUT_FILENO) setColor(out, tty_data.clr);
+    setColor(out, tty_data.clr);
     /* print prefix */
     write(out, (mode == 1) ? PORT_IN : PORT_OUT, PRFXSIZE);
     /* format data */
@@ -305,7 +307,7 @@ void outputData(unsigned char *buffer, int n, int out, int mode) {
     if (tty_data.dspbytes) {
         buffer[0] = 0;
         sprintf(buffer, "\n%s %i", TOTALBYTES, n);
-        if (out == STDOUT_FILENO) setColor(out, tty_data.bclr);
+        setColor(out, tty_data.bclr);
         write (out, buffer, strlen(buffer));
     }
 }
@@ -383,8 +385,7 @@ void closeAll() {
         if (tty_data.ptyName) dev_unlock(tty_data.ptyName);
     }
     /* restore color */
-    if (tty_data.logfd == STDOUT_FILENO)
-	   setColor(tty_data.logfd, colors[WHITE].color);
+    setColor(tty_data.logfd, colors[WHITE].color);
     /* restore settings on pty */
     if (tty_data.ptyraw)
         tcsetattr(tty_data.ptyfd, TCSAFLUSH, &tty_data.ptystate_orig);
