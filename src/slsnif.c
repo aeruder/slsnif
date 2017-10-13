@@ -44,8 +44,11 @@ void usage() {
     printf("  -i (--in-tee)  <file>   - write raw data from device to this file(s).\n");
     printf("  -o (--out-tee) <file>   - write raw data from host to this file(s).\n");
     printf("  -s (--speed) <speed>    - baudrate to use, defaults to 9600 baud.\n");
+    printf("  --parity <type>         - Set parity options, one of none, even or odd.\n");
+    printf("  -w (--wait) <time>      - time in ms to wait for more data to arrive.\n");
     printf("  -p (--port2) <port2>    - serial port to use instead of pty.\n");
     printf("  -x (--hex)              - display hexadecimal ascii values.\n");
+    printf("  -d (--hexdump)          - display in \"hexdump\" format (hex plus ascii)\n");
     printf("  -u (--unix98)           - use SYSV (unix98) ptys instead of BSD ones\n");
     printf("  --color      <color>    - color to use for normal output.\n");
     printf("  --timecolor  <color>    - color to use for timestamp.\n");
@@ -62,8 +65,20 @@ void fatalError(char *msg) {
     _exit(-1);
 }
 
-int setRaw(int fd, struct termios *ttystate_orig) {
-/* set tty into raw mode */
+void setSerial(struct termios *tty_state) {
+/* set configured serial options into tty_state */
+    tty_state->c_cflag &= ~(PARENB|PARODD);
+    tty_state->c_cflag |= CS8;
+    if (tty_data.parity)
+        tty_state->c_cflag |= PARENB;
+    if (tty_data.parity == PARITY_ODD)
+        tty_state->c_cflag |= PARODD;
+    cfsetispeed(tty_state, tty_data.baudrate);
+    cfsetospeed(tty_state, tty_data.baudrate);
+}
+
+int setRawAndSerial(int fd, struct termios *ttystate_orig) {
+/* set tty into raw mode and apply serial options */
 
     struct termios    tty_state;
 
@@ -74,11 +89,9 @@ int setRaw(int fd, struct termios *ttystate_orig) {
     tty_state.c_lflag &= ~(ICANON | IEXTEN | ISIG | ECHO);
     tty_state.c_iflag &= ~(ICRNL | INPCK | ISTRIP | IXON | BRKINT);
     tty_state.c_oflag &= ~OPOST;
-    tty_state.c_cflag |= CS8;	
     tty_state.c_cc[VMIN]  = 1;
     tty_state.c_cc[VTIME] = 0;
-    cfsetispeed(&tty_state, tty_data.baudrate);
-    cfsetospeed(&tty_state, tty_data.baudrate);
+    setSerial(&tty_state);
     if (tcsetattr(fd, TCSAFLUSH, &tty_state) < 0) return 0;
     return 1;
 }
@@ -133,8 +146,59 @@ void fmtDataHex(unsigned char *in, char *out, int in_size) {
     }
 }
 
+static const int LINE_WIDTH = 16;
+static const int BLOCK_SIZE = 4;
+
+char *fmtDataHexdumpLine(unsigned char *in, char *out, int in_size) {
+    int     i;
+
+    for (i = 0; i < in_size; i++) {
+        out += sprintf(out, "%02x ", in[i]);
+        if (i % BLOCK_SIZE == BLOCK_SIZE - 1)
+            *out++ = ' ';
+    }
+
+    // Fll with spaces up to a complete line
+    for (; i < LINE_WIDTH; i++) {
+        out += sprintf(out, "   ");
+        if (i % BLOCK_SIZE == BLOCK_SIZE - 1)
+            *out++ = ' ';
+    }
+
+    // Add ASCII version
+    for (i = 0; i < in_size; i++) {
+        if (isprint(in[i]))
+            *out++ = in[i];
+        else
+            *out++ = '.';
+    }
+
+    *out = '\0';
+    return out;
+}
+
+void fmtDataHexdump(unsigned char *in, char *out, int in_size) {
+
+    int     len;
+    int     first = 1;
+
+    /* flush output buffer */
+    out[0] = 0;
+    while (in_size) {
+        if (!first)
+            out += sprintf(out, "%s", PRFX_EMPTY);
+        len = in_size < LINE_WIDTH ? in_size : LINE_WIDTH;
+        out = fmtDataHexdumpLine(in, out, len);
+        in_size -= len;
+        in += len;
+        first = 0;
+    }
+}
+
 void setColor(int out, char *color) {
 /* changes color on the terminal */
+    if (!isatty(out))
+        return;
 
     if (color[0]) {
         write(out, color, 7);
@@ -143,16 +207,47 @@ void setColor(int out, char *color) {
     }
 }
 
-void writeData(int in, int out, int aux, int mode) {
-/* reads data from `in`, formats it, writes it to `out` and `aux`.
- * mode 0 - read from pipe
+void forwardData(int in, int out, int aux, int mode) {
+/* reads data from `in` and writes it to `out` and `aux`.
  * mode 1 - read from port
  * mode 2 - read from pty
  */
 
     unsigned char   buffer[BUFFSIZE];
-    char            outbuf[BUFFSIZE * 16 + 1];
     int             n;
+    if ((n = read(in, buffer, BUFFSIZE)) < 0) {
+        if (errno == EIO)
+            sleep(1);
+        else
+            perror(mode == 1 ? RPORTFAIL : RPTYFAIL);
+    } else {
+        if (n > 0) {
+            write(out, buffer, n);
+            write(aux, buffer, n);
+        }
+    }
+}
+
+int readPipeData(int in, unsigned char *buffer, int size) {
+    int             n;
+
+    /* reads data from `in` into `buffer`. Returns the amount of data
+     * read. */
+    if ((n = read(in, buffer, size)) < 0) {
+        perror(RPIPEFAIL);
+        n = 0;
+    }
+    return n;
+}
+
+void outputData(unsigned char *buffer, int n, int out, int mode) {
+    /* reads `n` bytes from `buffer`, formats them, writes them to `out`
+     * (and the appropriate tee_files).
+     * mode 1 - read from port
+     * mode 2 - read from pty
+     */
+
+    char            outbuf[BUFFSIZE * 16 + 1];
 #ifdef HAVE_SYS_TIMEB_H
     struct timeb    tstamp;
     char            tbuf[29];
@@ -163,87 +258,86 @@ void writeData(int in, int out, int aux, int mode) {
     time_t          tstamp;
 #endif
 #endif
-    if ((n = read(in, buffer, BUFFSIZE)) < 0) {
-        if (mode)
-            if (errno == EIO)
-                sleep(1);
-            else
-                perror(mode == 1 ? RPORTFAIL : RPTYFAIL);
-        else
-            perror(RPIPEFAIL);
-    } else {
-        if (n > 0) {
-            if (mode) {
-                write(out, buffer, n);
-                write(aux, buffer, n);
-            } else {
-                /* print timestamp if necessary */
-                if (tty_data.tstamp) {
-                    if (out == STDOUT_FILENO) setColor(out, tty_data.tclr);
-                    write(out, "\n\n", 2);
+    /* print timestamp if necessary */
+    if (tty_data.tstamp) {
+        setColor(out, tty_data.tclr);
+        write(out, "\n\n", 2);
 #ifdef HAVE_SYS_TIMEB_H
-                    ftime(&tstamp);
-                    tmp[0] = tmp1[0] = tbuf[0] = 0;
-                    strncat(tmp, ctime(&(tstamp.time)), 24);
-                    strncat(tbuf, tmp, 19);
-                    sprintf(tmp1, ".%2ui", tstamp.millitm);
-                    strncat(tbuf, tmp1, 3);
-                    strcat(tbuf, tmp + 19);
-                    write(out, tbuf, 28);
+        ftime(&tstamp);
+        tmp[0] = tmp1[0] = tbuf[0] = 0;
+        strncat(tmp, ctime(&(tstamp.time)), 24);
+        strncat(tbuf, tmp, 19);
+        sprintf(tmp1, ".%2ui", tstamp.millitm);
+        strncat(tbuf, tmp1, 3);
+        strcat(tbuf, tmp + 19);
+        write(out, tbuf, 28);
 #else
 #ifdef HAVE_TIME_H
-                    time(&tstamp);
-                    write(out, ctime(&tstamp), 24);
+        time(&tstamp);
+        write(out, ctime(&tstamp), 24);
 #endif
 #endif
-                } else {
-                    write(out, "\n", 1);
-                }
-                if (out == STDOUT_FILENO) setColor(out, tty_data.clr);
-                /* print prefix */
-                write(out, aux ? PORT_IN : PORT_OUT, PRFXSIZE);
-                /* format data */
-                if (tty_data.dsphex) {
-                    fmtDataHex(buffer, outbuf, n);
-                } else {
-                    fmtData(buffer, outbuf, n);
-                }
-                if (aux && reseek) {
-                    /* rotate log file */
-                    lseek(tty_data.logfd, 0, SEEK_SET);
-		    for (entry= tee_files[0]; entry; entry = entry->next) lseek(entry->fd, 0, SEEK_SET);
-                    /* clear the flag */
-                    reseek = FALSE;
-                }
-                /* print data */
-                write(out, outbuf, strlen(outbuf));
-                /* print total number of bytes if necessary */
-                if (tty_data.dspbytes) {
-                    buffer[0] = 0;
-                    sprintf(buffer, "\n%s %i", TOTALBYTES, n);
-                    if (out == STDOUT_FILENO) setColor(out, tty_data.bclr);
-                    write (out, buffer, strlen(buffer));
-                }
-                for (entry = (aux ? tee_files[0] : tee_files[1]); entry; entry = entry->next) {
-                    if (n != write(entry->fd, buffer, n)) fatalError(TEEWRTFAIL);
-                }
-            }
-        }
+    } else {
+        write(out, "\n", 1);
+    }
+    setColor(out, tty_data.clr);
+    /* print prefix */
+    write(out, (mode == 1) ? PORT_IN : PORT_OUT, PRFXSIZE);
+    /* format data */
+    if (tty_data.dsphex) {
+        fmtDataHex(buffer, outbuf, n);
+    } else if (tty_data.dsphexdump) {
+        fmtDataHexdump(buffer, outbuf, n);
+    } else {
+        fmtData(buffer, outbuf, n);
+    }
+    if (mode == 1 && reseek) {
+        /* rotate log file */
+        lseek(tty_data.logfd, 0, SEEK_SET);
+        for (entry= tee_files[0]; entry; entry = entry->next) lseek(entry->fd, 0, SEEK_SET);
+        /* clear the flag */
+        reseek = FALSE;
+    }
+    /* print data */
+    write(out, outbuf, strlen(outbuf));
+    for (entry = (mode == 1 ? tee_files[0] : tee_files[1]); entry; entry = entry->next) {
+        if (n != write(entry->fd, buffer, n)) fatalError(TEEWRTFAIL);
+    }
+    /* print total number of bytes if necessary */
+    if (tty_data.dspbytes) {
+        buffer[0] = 0;
+        sprintf((char*)buffer, "\n%s %i", TOTALBYTES, n);
+        setColor(out, tty_data.bclr);
+        write (out, buffer, strlen((char*)buffer));
     }
 }
 
 void pipeReader() {
 /* get data drom pipes */
 
-    int             maxfd;
+    int             maxfd, mode, have_port, have_pty;
     fd_set          read_set;
+    unsigned char   buffer[BUFFSIZE];
+    int             read;
+    struct timeval  timeout;
+    struct timeval  *timeoutptr;
 
     maxfd = max(tty_data.ptypipefd[0], tty_data.portpipefd[0]);
+    read = 0;
+    mode = 0;
     while (TRUE) {
         FD_ZERO(&read_set);
         FD_SET(tty_data.ptypipefd[0], &read_set);
         FD_SET(tty_data.portpipefd[0], &read_set);
-        if (select(maxfd + 1, &read_set, NULL, NULL, NULL) < 0) {
+        // When data is pending and wait is specified, set a timeout
+        if (tty_data.wait && mode) {
+            timeout.tv_sec = tty_data.wait / 1000;
+            timeout.tv_usec = tty_data.wait % 1000 * 1000;
+            timeoutptr = &timeout;
+        } else {
+            timeoutptr = NULL;
+        }
+        if (select(maxfd + 1, &read_set, NULL, NULL, timeoutptr) < 0) {
 	    /* don't bail out if error was caused by interrupt */
 	    if (errno != EINTR) {
                 perror(SELFAIL);
@@ -252,11 +346,29 @@ void pipeReader() {
 	        continue;
             }
         }
-        if (FD_ISSET(tty_data.ptypipefd[0], &read_set))
-            writeData(tty_data.ptypipefd[0], tty_data.logfd, 0, 0);
-        else
-            if (FD_ISSET(tty_data.portpipefd[0], &read_set))
-                writeData(tty_data.portpipefd[0], tty_data.logfd, 1, 0);
+        have_port = FD_ISSET(tty_data.portpipefd[0], &read_set);
+        have_pty = FD_ISSET(tty_data.ptypipefd[0], &read_set);
+
+        // Mode indicates what data is waiting in the buffer now
+        if ((!mode || mode == 2) && have_pty) {
+            mode = 2;
+            read += readPipeData(tty_data.ptypipefd[0], buffer + read, BUFFSIZE - read);
+            // Read some data, wait for more before outputting
+            if (tty_data.wait && read < BUFFSIZE && !have_port)
+                continue;
+        } else if ((!mode || mode == 1) && have_port) {
+            mode = 1;
+            read += readPipeData(tty_data.portpipefd[0], buffer + read, BUFFSIZE - read);
+            // Read some data, wait for more before outputting
+            if (tty_data.wait && read < BUFFSIZE && !have_pty)
+                continue;
+        }
+
+        if (read) {
+            outputData(buffer, read, tty_data.logfd, mode);
+            mode = 0;
+            read = 0;
+        }
     }
 }
 
@@ -273,8 +385,7 @@ void closeAll() {
         if (tty_data.ptyName) dev_unlock(tty_data.ptyName);
     }
     /* restore color */
-    if (tty_data.logfd == STDOUT_FILENO)
-	   setColor(tty_data.logfd, colors[WHITE].color);
+    setColor(tty_data.logfd, colors[WHITE].color);
     /* restore settings on pty */
     if (tty_data.ptyraw)
         tcsetattr(tty_data.ptyfd, TCSAFLUSH, &tty_data.ptystate_orig);
@@ -376,11 +487,14 @@ int main(int argc, char *argv[]) {
         {"nolock",     0, NULL, 'n'},
         {"port2",      1, NULL, 'p'},
         {"speed",      1, NULL, 's'},
+        {"parity",     1, NULL, 'P'},
+        {"wait",       1, NULL, 'w'},
         {"bytes",      0, NULL, 'b'},
         {"timestamp",  0, NULL, 't'},
         {"hex",        0, NULL, 'x'},
+        {"hexdump",    0, NULL, 'd'},
         {"unix98",     0, NULL, 'u'},
-        {"color",      1, NULL, 'w'},
+        {"color",      1, NULL, 'q'},
         {"timecolor",  1, NULL, 'y'},
         {"bytescolor", 1, NULL, 'z'},
         {"in-tee",     1, NULL, 'i'},
@@ -441,10 +555,26 @@ int main(int argc, char *argv[]) {
                     strcat(baudstr, baudrates[i].spdstr);
                 }
                 break;
+            case 'P':
+                if (strcasecmp(optarg, "none") == 0) {
+                    tty_data.parity = PARITY_NONE;
+                } else if (strcasecmp(optarg, "even") == 0) {
+                    tty_data.parity = PARITY_EVEN;
+                } else if (strcasecmp(optarg, "odd") == 0) {
+                    tty_data.parity = PARITY_ODD;
+                } else {
+                    errno = EINVAL;
+                    perror(PARITYFAIL);
+                    return -1;
+                }
+                break;
+            case 'w':
+                tty_data.wait = atoi(optarg);
+                break;
             case 'p':
                 tty_data.ptyName = (optarg[0] == '=' ? optarg + 1 : optarg);
                 break;
-            case 'w':
+            case 'q':
                 ptr1 = getColor(optarg);
                 if (ptr1) {
                     tty_data.clr[0] = 0;
@@ -453,6 +583,9 @@ int main(int argc, char *argv[]) {
                 break;
             case 'x':
                 tty_data.dsphex = TRUE;
+                break;
+            case 'd':
+                tty_data.dsphexdump = TRUE;
                 break;
             case 'u':
                 tty_data.sysvpty = TRUE;
@@ -634,7 +767,7 @@ int main(int argc, char *argv[]) {
         printf("Opened port: %s\n", tty_data.ptyName);
     }
     /* set raw mode on pty */
-    if(!setRaw(tty_data.ptyfd, &tty_data.ptystate_orig)) {
+    if(!setRawAndSerial(tty_data.ptyfd, &tty_data.ptystate_orig)) {
         perror(RAWFAIL);
         return -1;
     }
@@ -651,7 +784,7 @@ int main(int argc, char *argv[]) {
     }
     printf("Opened port: %s\n", tty_data.portName);
     /* set raw mode on port */
-    if (!setRaw(tty_data.portfd, &tty_data.portstate_orig)) {
+    if (!setRawAndSerial(tty_data.portfd, &tty_data.portstate_orig)) {
         perror(RAWFAIL);
         return -1;
     }
@@ -675,22 +808,33 @@ int main(int argc, char *argv[]) {
         }
         if (FD_ISSET(tty_data.portfd, &rset)) {
             /* data coming from device */
-            writeData(tty_data.portfd, tty_data.ptyfd, tty_data.portpipefd[1], 1);
+            forwardData(tty_data.portfd, tty_data.ptyfd, tty_data.portpipefd[1], 1);
         } else {
             if (FD_ISSET(tty_data.ptyfd, &rset)) {
                 /* data coming from host */
                 if (needsync) {
                     setColor(STDOUT_FILENO, colors[WHITE].color);
                     printf("\nSynchronizing ports...");
-                    if (tcgetattr(tty_data.ptyfd, &tty_state) ||
-                            tcsetattr(tty_data.portfd, TCSANOW, &tty_state)) {
+                    if (tcgetattr(tty_data.ptyfd, &tty_state)) {
+                        perror(SYNCFAIL);
+                        return -1;
+                    }
+
+                    // Keep the serial options at their configured
+                    // values. A pty does not support some options (such
+                    // as parity), so synchronizing those from the pty
+                    // to the serial port will always set them to their
+                    // default disabled value, so we set it again here.
+                    setSerial(&tty_state);
+
+                    if (tcsetattr(tty_data.portfd, TCSANOW, &tty_state)) {
                         perror(SYNCFAIL);
                         return -1;
                     }
                     needsync = FALSE;
                     printf("Done!\n");
                 }
-                writeData(tty_data.ptyfd, tty_data.portfd, tty_data.ptypipefd[1], 2);
+                forwardData(tty_data.ptyfd, tty_data.portfd, tty_data.ptypipefd[1], 2);
             }
         }
     }

@@ -38,9 +38,10 @@
 #endif
 #include "common.h"
 
-#define OPTSTR      "bnhtuxp:l:s:i:o:" /* list of short options for getopt_long() */
+#define OPTSTR      "bnhtuxdp:l:s:w:i:o:" /* list of short options for getopt_long() */
 #define PORT_OUT    "\nHost   --> "
 #define PORT_IN     "\nDevice --> "
+#define PRFX_EMPTY  "\n       --> "
 #define DEFPTRNAME  "/dev/pty??"
 #define TMPPATH     "/tmp/slsnif_pty"
 #define TOTALBYTES  "Total bytes transmitted:"
@@ -62,6 +63,7 @@
 #define RPIPEFAIL   "Error reading from pipe"
 #define TEEFAIL     "Failed to create tee file"
 #define TEEWRTFAIL  "Failed to write to tee file"
+#define PARITYFAIL  "Invalid parity option"
 
 #define max(x,y)	((x) > (y) ? (x) : (y))
 
@@ -87,6 +89,12 @@ typedef struct _tee_entry {
      char   *name;
      int    fd;
 } tee_entry;
+
+enum {
+    PARITY_NONE = 0,
+    PARITY_ODD,
+    PARITY_EVEN,
+};
 
 /*
  * tee_files[0] - linked list of raw input files
