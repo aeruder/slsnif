@@ -224,6 +224,9 @@ void forwardData(int in, int out, int aux, int mode) {
         if (n > 0) {
             write(out, buffer, n);
             write(aux, buffer, n);
+        } else {
+            // EOF have occurred
+            exit(1);
         }
     }
 }
