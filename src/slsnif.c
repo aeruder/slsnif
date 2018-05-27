@@ -270,7 +270,7 @@ void outputData(unsigned char *buffer, int n, int out, int mode) {
         tmp[0] = tmp1[0] = tbuf[0] = 0;
         strncat(tmp, ctime(&(tstamp.time)), 24);
         strncat(tbuf, tmp, 19);
-        sprintf(tmp1, ".%2ui", tstamp.millitm);
+        snprintf(tmp1, sizeof(tmp1), ".%2u", tstamp.millitm);
         strncat(tbuf, tmp1, 3);
         strcat(tbuf, tmp + 19);
         write(out, tbuf, 28);
