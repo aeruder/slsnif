@@ -52,6 +52,9 @@ First (and only one in case of pty being used) serial port to listen to. (/dev/t
 .B [\-l <logfile>] ([\-\-log <logfile>])
 File to direct output to. Output is sent to \fIstdout\fR by default.
 .TP 
+.B [\-k <sympath>] ([\-\-link <sympath>])
+Make a symlink pointing to created pty, so external applications have a know path to configure its serial port.
+.TP
 .B [\-i <in-file>] ([\-\-in-tee <in-file>])
 File to dump raw data from device to. Multiple '\-i' / '\-\-in-tee' arguments result in multiple copies of data in corresponding files.
 .TP 

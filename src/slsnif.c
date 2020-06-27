@@ -50,11 +50,12 @@ void usage() {
     printf("  -x (--hex)              - display hexadecimal ascii values.\n");
     printf("  -d (--hexdump)          - display in \"hexdump\" format (hex plus ascii)\n");
     printf("  -u (--unix98)           - use SYSV (unix98) ptys instead of BSD ones\n");
+    printf("  -k (--link)             - make a symlink pointing to pty\n");
     printf("  --color      <color>    - color to use for normal output.\n");
     printf("  --timecolor  <color>    - color to use for timestamp.\n");
     printf("  --bytescolor <color>    - color to use for number of bytes transmitted.\n\n");
     printf("Following names are valid colors:\n");
-    printf(" \tblack, red, green, yellow, blue, magenta, cyan, white,\n");
+    printf("Â \tblack, red, green, yellow, blue, magenta, cyan, white,\n");
     printf("\tbrightblack,brightred, brightgreen, brightyellow,\n");
     printf("\tbrightblue, brightmagenta, brightcyan, brightwhite\n\n");
     printf("Example: slsnif -l log.txt -s 2400 /dev/ttyS1\n\n");
@@ -480,6 +481,7 @@ int main(int argc, char *argv[]) {
 
     int             i, j, maxfd, tmpfd, optret;
     char            *logName = NULL, baudstr[7], *ptr1, *ptr2;
+    char            *linkName = NULL;
     struct termios  tty_state;
     fd_set          rset;
 
@@ -497,6 +499,7 @@ int main(int argc, char *argv[]) {
         {"hex",        0, NULL, 'x'},
         {"hexdump",    0, NULL, 'd'},
         {"unix98",     0, NULL, 'u'},
+        {"link",       1, NULL, 'k'},
         {"color",      1, NULL, 'q'},
         {"timecolor",  1, NULL, 'y'},
         {"bytescolor", 1, NULL, 'z'},
@@ -548,6 +551,9 @@ int main(int argc, char *argv[]) {
                 break;
             case 'l':
                 logName = (optarg[0] == '=' ? optarg + 1 : optarg);
+                break;
+            case 'k':
+                linkName = (optarg[0] == '=' ? optarg + 1 : optarg);
                 break;
             case 's':
                 i = 0;
@@ -742,6 +748,31 @@ int main(int argc, char *argv[]) {
             tty_data.ptyName[5] = 't';
         }
         printf("Opened pty: %s\n", tty_data.ptyName);
+
+        if(linkName != NULL) {
+        /* Make symlink to pty */
+            int makeLink = TRUE;
+            if( faccessat( AT_FDCWD, linkName, R_OK | W_OK  , AT_SYMLINK_NOFOLLOW) == 0 ) {
+//  we have access, so file exist. we only remove it if is a symlink
+                struct stat p_statbuf;
+                makeLink =  (lstat(linkName, &p_statbuf) == 0 && S_ISLNK(p_statbuf.st_mode) == 1);
+                if(makeLink)
+                        unlink(linkName);
+                else
+                    printf(LNKEXIST"\n");
+            }
+            else
+// If file not exist, try to make it, else, don't try it
+                if((makeLink = (errno == ENOENT)) == FALSE)
+                    perror(LNKFAIL);
+
+            if(makeLink) {
+                if(symlink(tty_data.ptyName, linkName) != 0)
+                    perror(LNKFAIL);
+                else
+                    printf("Created symlink '%s' -> %s.\n",  linkName,tty_data.ptyName);
+            }
+        }
         /* save the name of pty opened in a file */
         if ((tmpfd = open(TMPPATH,
                      O_RDWR|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR)) < 0) {

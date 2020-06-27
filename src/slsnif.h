@@ -38,7 +38,7 @@
 #endif
 #include "common.h"
 
-#define OPTSTR      "bnhtuxdp:l:s:w:i:o:" /* list of short options for getopt_long() */
+#define OPTSTR      "bnhtuxdp:l:k:s:w:i:o:" /* list of short options for getopt_long() */
 #define PORT_OUT    "\nHost   --> "
 #define PORT_IN     "\nDevice --> "
 #define PRFX_EMPTY  "\n       --> "
@@ -50,6 +50,8 @@
 #define PTYFAIL     "Failed to open a pty"
 #define PORTFAIL    "Failed to open port"
 #define LOGFAIL     "Failed to open log file, defaulting to stdout"
+#define LNKFAIL     "Failed to create symlink, continuing..."
+#define LNKEXIST    "Failed to create symlink. File exist and is not a symlink, continuing..."
 #define TMPFAIL     "Failed to open temp. file to save opened pty name, continuing..."
 #define SELFAIL     "`Select` failed"
 #define RPORTFAIL   "Error reading from port"
