@@ -21,7 +21,7 @@ AC_TYPE_PID_T
 
 dnl Checks for library functions.
 AC_TYPE_SIGNAL
-AC_CHECK_FUNCS(select strdup getopt_long time ctime ftime getpt grantpt unlockpt ptsname)
+AC_CHECK_FUNCS(select strdup getopt_long time ctime ftime posix_openpt grantpt unlockpt ptsname)
 AC_FUNC_SELECT_ARGTYPES
 AM_CONFIG_HEADER(config.h)
 AC_OUTPUT(Makefile src/Makefile)
