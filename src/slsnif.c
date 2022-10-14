@@ -700,12 +700,12 @@ int main(int argc, char *argv[]) {
     }
     if (!tty_data.ptyName) {
         if (tty_data.sysvpty) {
-#if defined(HAVE_GETPT) && defined(HAVE_GRANTPT) && defined(HAVE_PTSNAME) && defined(HAVE_UNLOCKPT)
+#if defined(HAVE_POSIX_OPENPT) && defined(HAVE_GRANTPT) && defined(HAVE_PTSNAME) && defined(HAVE_UNLOCKPT)
             /* use unix98 pty */
             /* temprarily disable handler for SIGCHLD */
             signal(SIGCHLD, SIG_DFL);
             /* open pty */
-            if ((tty_data.ptyfd = getpt()) < 0 ||
+            if ((tty_data.ptyfd = posix_openpt(O_RDWR)) < 0 ||
                  grantpt(tty_data.ptyfd) < 0 ||
                  unlockpt(tty_data.ptyfd) < 0 ||
                  !(tty_data.ptyName = ptsname(tty_data.ptyfd))) {
